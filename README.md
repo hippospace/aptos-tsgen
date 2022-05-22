@@ -2,6 +2,19 @@
 
 `aptos-tsgen` uses json output from `jsongen` to generate TypeScript interface for Move modules.
 
+# How-to
+Steps:
+1. clone and build the `jsongen` branch of [move-jsongen](https://github.com/hippospace/move-jsongen/tree/jsongen)
+2. Find the `move` binary built under `target/debug/`
+3. From inside your move project's directory (where `Move.toml` exists), run this command:
+   - `path/to/target/debug/move package build --json`
+   - This step generates json interface descriptors for your Move modules
+4. From one of your typescript projects:
+   - `yarn add @manahippo/aptos-tsgen`
+   - `yarn aptos-tsgen src/generated path/to/generated/json/dir`
+   - Note that path to generated json dir is usually, in the move project, `build/MODULE_NAME/json`
+
+I'll add a full demo with the required steps in a bit...
 # Example
 
 Move source code:
