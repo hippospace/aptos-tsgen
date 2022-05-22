@@ -1,7 +1,8 @@
 import { HexString } from "aptos";
 import fs from "fs";
 import path from "path";
-import { AtomicTypeTag, parseTypeTagOrThrow, StructTag, TypeParamIdx, TypeTag, VectorTag } from "./typeTag";
+import { FieldDeclType } from "./parserRepo";
+import { AtomicTypeTag, getTypeTagParamlessName, parseTypeTagOrThrow, StructTag, TypeParamIdx, TypeTag, VectorTag } from "./typeTag";
 
 export type TypeTagString = string;
 
@@ -77,6 +78,7 @@ enum IMPORT {
   APTOS_ACCOUNT = "AptosAccount",
   USER_TRANSACTION = "UserTransaction",
   SEND_AND_WAIT = "sendAndWait",
+  STRUCT_TAG = "StructTag",
 }
 
 const IMPORT_MAP: Record<IMPORT, string> = {
@@ -93,6 +95,7 @@ const IMPORT_MAP: Record<IMPORT, string> = {
   [IMPORT.APTOS_ACCOUNT] : 'import { AptosAccount } from "aptos";',
   [IMPORT.USER_TRANSACTION] : 'import { UserTransaction } from "aptos";',
   [IMPORT.SEND_AND_WAIT] : 'import { sendAndWait } from "@manahippo/aptos-tsgen";',
+  [IMPORT.STRUCT_TAG] : 'import { StructTag } from "@manahippo/aptos-tsgen";',
 }
 
 /*
@@ -410,6 +413,8 @@ export class AptosTsgen {
     this.emitln("  ];");
     this.emitln("");
 
+    const events:[JsonStructFieldType, TypeTag][] = [];
+
     // the actual member properties of the class:
     const fieldNameToTsType: Record<string, string> = {};
     struct.fields.forEach(field => {
@@ -418,6 +423,12 @@ export class AptosTsgen {
       const tsType = this.typeTagToTsType(typeTag, module, true);
       fieldNameToTsType[field.name] = tsType;
       this.emitln(`  ${field.name}: ${tsType};`)
+      if(getTypeTagParamlessName(typeTag) === '0x1::Event::EventHandle') {
+        if (!(typeTag instanceof StructTag) || typeTag.typeParams.length !== 1) {
+          throw new Error(`Wrong number of type parameters for EventHandle: ${JSON.stringify(typeTag)}`);
+        }
+        events.push([field, typeTag.typeParams[0]]);
+      }
     });
     this.emitln("");
 
@@ -448,10 +459,35 @@ export class AptosTsgen {
       this.imports.add(IMPORT.HEXSTRING);
       this.imports.add(IMPORT.TYPETAG);
       this.imports.add(IMPORT.APTOS_PARSER_REPO);
-      this.emitln(`  static load(repo: AptosParserRepo, client: AptosClient, address: HexString, typeParams: TypeTag[]) {`);
-      this.emitln(`    return repo.loadResource(client, address, ${struct.name}, typeParams) as unknown as ${struct.name};`);
+      this.emitln(`  static async load(repo: AptosParserRepo, client: AptosClient, address: HexString, typeParams: TypeTag[]) {`);
+      this.emitln(`    const result = await repo.loadResource(client, address, ${struct.name}, typeParams);`);
+      this.emitln(`    return result as unknown as ${struct.name};`);
       this.emitln(`  }`);
       this.emitln("");
+    }
+
+    // loadEvents
+    if (events.length > 0) {
+      for(const evt of events) {
+        const [jsonField, eventTypeTag] = evt;
+        const eventTypeTsname = this.typeTagToTsType(eventTypeTag, module, true);
+        this.emitln(`  static async load_${jsonField.name}(`);
+        this.emitln("    repo: AptosParserRepo,");
+        this.emitln("    client: AptosClient,");
+        this.emitln("    address: HexString,"); 
+        this.emitln("    typeParams: TypeTag[],");
+        this.emitln("  ) {");
+        this.imports.add(IMPORT.PARSE_TYPE_TAG_OR_THROW);
+        this.imports.add(IMPORT.STRUCT_TAG);
+        this.emitln(`    const containerTypeTag = parseTypeTagOrThrow("${module.address}::${module.module}::${struct.name}");`);
+        this.emitln("    if(!(containerTypeTag instanceof StructTag)) {");
+        this.emitln("      throw new Error('Unreachable');");
+        this.emitln("    }");
+        this.emitln(`    containerTypeTag.typeParams = typeParams;`);
+        this.emitln(`    const events = await repo.loadEvents(client, address, containerTypeTag, "${jsonField.name}")`);
+        this.emitln(`    return events as unknown as ${eventTypeTsname}[];`);
+        this.emitln(`  }`);
+      }
     }
 
     // closes class
@@ -551,7 +587,7 @@ export class AptosTsgen {
       throw new Error("Type parameter in script function signature currently not supported by tsgen");
     }
     else if (tag === AtomicTypeTag.Address) {
-      return `new HexString(${param.name})`
+      return param.name; // nothing needed
     }
     else if (tag === AtomicTypeTag.Bool) {
       return param.name; // nothing needed

@@ -1,4 +1,4 @@
-import { AtomicTypeTag, getTypeTagParamlessName, StructTag, TypeTag, TypeParamIdx, VectorTag, getTypeTagFullname } from "./typeTag";
+import { AtomicTypeTag, getTypeTagParamlessName, StructTag, TypeTag, TypeParamIdx, VectorTag, getTypeTagFullname, parseTypeTag, parseTypeTagOrThrow } from "./typeTag";
 import { AptosClient, HexString } from "aptos";
 import bigInt from "big-integer";
 import Decimal from "decimal.js";
@@ -182,6 +182,23 @@ export class AptosParserRepo {
     const resource = await client.getAccountResource(address, getTypeTagFullname(typeTag));
     const proto = parseStructProto(resource.data, typeTag, this, structTsType);
     return new structTsType(proto, typeTag);
+  }
+  async loadEvents(
+    client: AptosClient, 
+    address: HexString, 
+    containerTypeTag: TypeTag, 
+    field: string,
+    query?: { start?: number; limit?: number },
+  ) {
+    const handlerFullname = getTypeTagFullname(containerTypeTag);
+    if(!(containerTypeTag instanceof StructTag)) {
+      throw new Error(`Event handler container struct should be a struct, but received: ${getTypeTagParamlessName(containerTypeTag)}`);
+    }
+    const events = await client.getEventsByEventHandle(address, handlerFullname, field, query);
+    return events.map( e => { 
+      const tag = parseTypeTagOrThrow(e.type);
+      return this.parse(e.data, tag);
+    });
   }
   parse(data: object, typeTag: TypeTag) {
     const paramlessName = getTypeTagParamlessName(typeTag);
