@@ -143,6 +143,50 @@ export function AsciiParser(data: any, typeTag: TypeTag, _repo: AptosParserRepo)
   return data as string;
 }
 
+export class AptosVectorU8 {
+  u8Array: Uint8Array;
+  constructor(input: number[] | string | Uint8Array) {
+    if(input instanceof Uint8Array) {
+      this.u8Array = input;
+    }
+    else if (typeof input === 'string') {
+      this.u8Array = new TextEncoder().encode(input);
+    }
+    else {
+      this.u8Array = new Uint8Array(input);
+    }
+  }
+
+  toString() {
+    return new TextDecoder().decode(this.u8Array);
+  }
+
+  toHexString() : HexString {
+    return HexString.fromUint8Array(this.u8Array);
+  }
+
+  hex(): string {
+    return HexString.fromUint8Array(this.u8Array).hex();
+  }
+
+  asNumbers() {
+    return Array.from(this.u8Array);
+  }
+}
+
+export function numbersOrStringToHexString(input: number[] | Uint8Array | string ): HexString {
+  if(typeof input === 'string') {
+    return HexString.fromUint8Array(new TextEncoder().encode(input));
+  }
+  else if(input instanceof Uint8Array) {
+    return HexString.fromUint8Array(input);
+  }
+  else {
+    // number[]
+    return HexString.fromUint8Array(new Uint8Array(input));
+  }
+}
+
 export function VectorParser(data: any, typeTag: TypeTag, repo: AptosParserRepo): any[] {
   if(!(typeTag instanceof VectorTag)) {
     throw new Error(`VectorParser cannot parse type: ${getTypeTagParamlessName(typeTag)}`);

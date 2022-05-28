@@ -74,7 +74,7 @@ export function getTypeTagParamlessName(typeTag: TypeTag): string {
     return structTag.getParamlessName();
   }
   else if (typeTag instanceof TypeParamIdx) {
-    throw new Error("Unreachable");
+    return `$tv${typeTag.index}`;
   }
   else {
     const atomicTag = typeTag as AtomicTypeTag;

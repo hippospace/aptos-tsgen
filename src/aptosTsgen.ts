@@ -79,6 +79,7 @@ enum IMPORT {
   USER_TRANSACTION = "UserTransaction",
   SEND_AND_WAIT = "sendAndWait",
   STRUCT_TAG = "StructTag",
+  APTOS_VECTOR_U8 = "AptosVectorU8",
 }
 
 const IMPORT_MAP: Record<IMPORT, string> = {
@@ -96,6 +97,7 @@ const IMPORT_MAP: Record<IMPORT, string> = {
   [IMPORT.USER_TRANSACTION] : 'import { UserTransaction } from "aptos";',
   [IMPORT.SEND_AND_WAIT] : 'import { sendAndWait } from "@manahippo/aptos-tsgen";',
   [IMPORT.STRUCT_TAG] : 'import { StructTag } from "@manahippo/aptos-tsgen";',
+  [IMPORT.APTOS_VECTOR_U8] : 'import { AptosVectorU8 } from "@manahippo/aptos-tsgen";',
 }
 
 /*
@@ -358,8 +360,16 @@ export class AptosTsgen {
       }
     }
     else if (typeTag instanceof VectorTag) {
-      const innerTsType = this.typeTagToTsType(typeTag.elementType, module, allowStruct);
-      tsType = `${innerTsType}[]`;
+      // vector<u8> requires special treatment
+      const innerTag = typeTag.elementType;
+      if (innerTag === AtomicTypeTag.U8) {
+        this.imports.add(IMPORT.APTOS_VECTOR_U8);
+        tsType = "AptosVectorU8";
+      }
+      else {
+        const innerTsType = this.typeTagToTsType(typeTag.elementType, module, allowStruct);
+        tsType = `${innerTsType}[]`;
+      }
     }
     else if (typeTag instanceof TypeParamIdx) {
       tsType = 'any';
@@ -454,11 +464,10 @@ export class AptosTsgen {
 
     // loadResource()
     if (struct.abilities.includes('key')) {
+      this.imports.add(IMPORT.APTOS_PARSER_REPO);
       this.imports.add(IMPORT.APTOS_CLIENT);
-      this.imports.add(IMPORT.APTOS_ACCOUNT);
       this.imports.add(IMPORT.HEXSTRING);
       this.imports.add(IMPORT.TYPETAG);
-      this.imports.add(IMPORT.APTOS_PARSER_REPO);
       this.emitln(`  static async load(repo: AptosParserRepo, client: AptosClient, address: HexString, typeParams: TypeTag[]) {`);
       this.emitln(`    const result = await repo.loadResource(client, address, ${struct.name}, typeParams);`);
       this.emitln(`    return result as unknown as ${struct.name};`);
@@ -550,10 +559,10 @@ export class AptosTsgen {
       throw new Error(`This is not an acceptable type for script function parameter: ${JSON.stringify(tag)}`);
     }
     if (tag instanceof VectorTag) {
-      // vector<u8> came in as number[], gets converted to HexString
+      // vector<u8> came in as AptosVectorU8, gets converted to HexString
       // TODO: provide a special type called AptosVecU8 to handle this mess specifically?
       if (tag.elementType === AtomicTypeTag.U8) {
-        return `HexString.fromUint8Array(new Uint8Array(${param.name})).hex()`;
+        return `${param.name}.hex()`;
       }
       /*
       actual array value
