@@ -78,6 +78,7 @@ enum IMPORT {
   APTOS_ACCOUNT = "AptosAccount",
   USER_TRANSACTION = "UserTransaction",
   SEND_AND_WAIT = "sendAndWait",
+  BUILD_PAYLOAD = "buildPayload",
   STRUCT_TAG = "StructTag",
   APTOS_VECTOR_U8 = "AptosVectorU8",
 }
@@ -96,6 +97,7 @@ const IMPORT_MAP: Record<IMPORT, string> = {
   [IMPORT.APTOS_ACCOUNT] : 'import { AptosAccount } from "aptos";',
   [IMPORT.USER_TRANSACTION] : 'import { UserTransaction } from "aptos";',
   [IMPORT.SEND_AND_WAIT] : 'import { sendAndWait } from "@manahippo/aptos-tsgen";',
+  [IMPORT.BUILD_PAYLOAD] : 'import { buildPayload } from "@manahippo/aptos-tsgen";',
   [IMPORT.STRUCT_TAG] : 'import { StructTag } from "@manahippo/aptos-tsgen";',
   [IMPORT.APTOS_VECTOR_U8] : 'import { AptosVectorU8 } from "@manahippo/aptos-tsgen";',
 }
@@ -313,6 +315,11 @@ export class AptosTsgen {
       tsInitValue = `bigInt("${constant.value}")`;
       this.imports.add(IMPORT.BIGINT)
     }
+    else if (typeTag === AtomicTypeTag.Address) {
+      tsTypeName = "HexString";
+      this.imports.add(IMPORT.HEXSTRING);
+      tsInitValue = `new HexString("${constant.value}")`;
+    }
     else {
       throw new Error(`Unsupported constant type: ${constant.type}`);
     }
@@ -505,6 +512,12 @@ export class AptosTsgen {
   }
 
   generateScriptFunction(func: JsonFuncType, module: JsonModuleType) {
+    /*
+    We output 2 things:
+    - transaction sender, which accepts AptosClient and AptosAccount as input
+    - payload builder: which only needs function arguments as input
+    */
+    // emit transaction sender
     this.imports.add(IMPORT.APTOS_CLIENT);
     this.imports.add(IMPORT.APTOS_ACCOUNT);
     this.emitln(`export async function ${func.name}(`);
@@ -550,8 +563,74 @@ export class AptosTsgen {
     }
     // close call to sendAndWait
     this.emitln("  );");
-    // close function
+    // close transaction sender function
     this.emitln("}");
+
+    // emit payload builder
+    this.emitln(`export function build_payload_${func.name}(`);
+    paramsWithoutSigners.forEach(param => {
+      const tag = parseTypeTagOrThrow(param.type);
+      const ALLOW_STRUCT = false;
+      // FIXME: what if tag is a type-parameter? In this case, the tsType will be "any", and we will need to use 
+      // information in "typeParams" to figure out how to interpret the parameter
+      let tsType = this.typeTagToTsType(tag, module, ALLOW_STRUCT);
+      this.emitln(`  ${param.name}: ${tsType},`);
+    });
+    this.emitln("  typeParams: TypeTag[],");
+    this.emitln(") {");
+    this.emitln("  const typeParamStrings = typeParams.map(t=>getTypeTagFullname(t));");
+    this.imports.add(IMPORT.BUILD_PAYLOAD);
+    this.emitln("  return buildPayload(");
+    // funcname
+    this.emitln(`    "${module.address}::${module.module}::${func.name}",`);
+    // typeArguments
+    this.emitln(`    typeParamStrings,`);
+    // args
+    if (paramsWithoutSigners.length === 0) {
+      this.emitln("    []");
+    }
+    else {
+      this.emitln("    [");
+      paramsWithoutSigners.forEach(param=>{
+        const tag = parseTypeTagOrThrow(param.type);
+        const tsHandler = this.getTsHandlerForScriptFunctionParameter(tag, param);
+        this.emitln(`      ${tsHandler},`);
+      });
+      this.emitln("    ]");
+    }
+    // close call to buildPayload
+    this.emitln("  );");
+    // close payload builder function
+    this.emitln("}");
+  }
+
+  getTsHandlerForVectorInVector(elementType: VectorTag): string {
+    if(!AptosTsgen.isAcceptableConstantType(elementType)) {
+      throw new Error(`This is not an acceptable type for script function parameter: ${JSON.stringify(elementType)}`);
+    }
+    // returns a lambda that handles the innerTag
+    if (elementType.elementType instanceof VectorTag) {
+      const innerInnerHandler = this.getTsHandlerForVectorInVector(elementType.elementType);
+      return `(x) => {return x.map(${innerInnerHandler})}`
+    }
+    else if (elementType.elementType === AtomicTypeTag.U8) {
+      // element is a vector<u8>, tsType=AptosVectorU8
+      return `(x)=>{return x.hex();}`;
+    }
+    else if (elementType.elementType === AtomicTypeTag.U64 || elementType.elementType === AtomicTypeTag.U128) {
+      // element is a vector<U64/U128>, tsType=bigInt.BigInteger[]
+      return "(bigiArray)=>{return bigiArray.map(bigi=>bigi.toString());}";
+    }
+    else if (elementType.elementType === AtomicTypeTag.Bool) {
+      // element is a vector<bool>, tsType=boolean[]
+      return "boolArray=>return boolArray"
+    }
+    else if (elementType.elementType === AtomicTypeTag.Address) {
+      // element is a vector<address>, tsType=HexString[]
+      return "addrArray=>addrArray"
+    }
+
+    throw new Error(`Unsupported vector-in-vector inner type: ${JSON.stringify(elementType)}`);
   }
 
   getTsHandlerForScriptFunctionParameter(tag: TypeTag, param: JsonFuncParamType) {
@@ -582,9 +661,18 @@ export class AptosTsgen {
         // HexString[]
         return param.name;
       }
+      else if (tag.elementType instanceof VectorTag) {
+        // vector-in-vector, commonly seen: vector<vector<u8>>, with a tsType of AptosVectorU8[]
+        /*
+        In theory, something like this also possible: 
+        - vector<vector<bool>>, with tsType of boolean[][]
+        - vector<vector<vector<address>>>, with tsType of HexString[][][]
+        what matters is only the inner-most type
+        */
+        return `${param.name}.map(${this.getTsHandlerForVectorInVector(tag.elementType)})`;
+      }
       else {
-        // vector<T>
-        // vector<vector<u8>>
+        // should be unreachable
         throw new Error(`This vector type is not supported as script function argument: ${JSON.stringify(tag)}`);
       }
     }

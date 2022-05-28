@@ -124,7 +124,7 @@ export function AddressParser(data: any, typeTag: TypeTag, _repo: AptosParserRep
   return new HexString(data);
 }
 
-export function parseVectorU8(data: any): Uint8Array {
+export function parseVectorU8(data: any): AptosVectorU8 {
   if(typeof data !== "string") {
     throw new Error(`VectorU8 parser expects string data but received: ${typeof data}`);
   }
@@ -132,7 +132,7 @@ export function parseVectorU8(data: any): Uint8Array {
     throw new Error(`VectorU8 value is supposed to start with 0x but instead got: ${data}`);
   }
   const hexString = new HexString(data);
-  return hexString.toUint8Array();
+  return new AptosVectorU8(hexString.toUint8Array());
 }
 
 export function AsciiParser(data: any, typeTag: TypeTag, _repo: AptosParserRepo): string {
@@ -187,7 +187,7 @@ export function numbersOrStringToHexString(input: number[] | Uint8Array | string
   }
 }
 
-export function VectorParser(data: any, typeTag: TypeTag, repo: AptosParserRepo): any[] {
+export function VectorParser(data: any, typeTag: TypeTag, repo: AptosParserRepo): any {
   if(!(typeTag instanceof VectorTag)) {
     throw new Error(`VectorParser cannot parse type: ${getTypeTagParamlessName(typeTag)}`);
   }
@@ -195,7 +195,7 @@ export function VectorParser(data: any, typeTag: TypeTag, repo: AptosParserRepo)
   if (elementType === AtomicTypeTag.U8) {
     // vector<u8> data comes in hex string form
     const u8array = parseVectorU8(data);
-    return Array.from(u8array);
+    return u8array;
   }
   if(!(data instanceof Array)) {
     throw new Error(`VectorParser expects Array type as data but received: ${typeof data}`);
