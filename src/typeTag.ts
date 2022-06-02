@@ -121,6 +121,9 @@ export function parseQualifiedStructTag(name: string): [(null | StructTag), stri
         return [new StructTag(hexAddress, module, structName, typeParams), remaining.substr(1)];
       }
       // more params to parse
+      else if (remaining.startsWith(', ')) {
+        [result, remaining] = parseTypeTag(remaining.substr(2));
+      }
       else if (remaining.startsWith(',')) {
         [result, remaining] = parseTypeTag(remaining.substr(1));
       }
