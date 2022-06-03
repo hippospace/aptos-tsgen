@@ -1,6 +1,6 @@
 {
   "name": "@manahippo/aptos-tsgen",
-  "version": "0.0.34",
+  "version": "0.0.37",
   "main": "index.js",
   "license": "MIT",
   "scripts": {

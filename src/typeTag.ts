@@ -235,27 +235,25 @@ export function parseResourceType(fullname: string): StructTag {
   return result;
 }
 
-export function substituteTypeTagParams(tag: TypeTag, params: TypeTag[]) {
-  if (tag instanceof StructTag) {
-    if(tag.typeParams.length !== params.length) {
-      throw new Error(`TypeParam length mismatch: ${params.length} != param-length-of: ${JSON.stringify(tag)}`);
-    }
-    if (!params.every(isTypeTagConcrete)) {
-      throw new Error(`Substitued type params are not all concrete: ${JSON.stringify(params)}`);
-    }
-    tag.typeParams = params;
+export function substituteTypeParams(toSubstitute: TypeTag, typeParams: TypeTag[]): TypeTag {
+  if(toSubstitute instanceof StructTag) {
+    let params = toSubstitute.typeParams.map(p=>substituteTypeParams(p, typeParams));
+    return new StructTag(toSubstitute.address, toSubstitute.module, toSubstitute.name, params);
   }
-  else if (tag instanceof VectorTag) {
-    if(params.length !== 1) {
-      throw new Error(`Substituting vector type requires exactly one type parameter, but got: ${JSON.stringify(params)}`);
+  else if (toSubstitute instanceof VectorTag) {
+    const innerSubbed = substituteTypeParams(toSubstitute.elementType, typeParams);
+    return new VectorTag(innerSubbed);
+  }
+  else if (toSubstitute instanceof TypeParamIdx) {
+    let subbed = typeParams[toSubstitute.index];
+    if(!subbed) {
+      throw new Error(`Did not find param ${toSubstitute.index} in ${JSON.stringify(typeParams)}`);
     }
-    if(!isTypeTagConcrete(params[0])) {
-      throw new Error(`Substituted type param not concrete: ${JSON.stringify(params[0])}`);
-    }
-    tag.elementType = params[0];
+    return subbed;
   }
   else {
-    throw new Error("AtomicTypeTag or TypeParamIdx have no substitutable params.");
+    // AtomicTypeTag
+    return toSubstitute;
   }
 }
 

@@ -1,7 +1,6 @@
-import { AtomicTypeTag, getTypeTagParamlessName, StructTag, TypeTag, TypeParamIdx, VectorTag, getTypeTagFullname, parseTypeTag, parseTypeTagOrThrow } from "./typeTag";
+import { AtomicTypeTag, getTypeTagParamlessName, StructTag, TypeTag, TypeParamIdx, VectorTag, getTypeTagFullname, parseTypeTagOrThrow, substituteTypeParams } from "./typeTag";
 import { AptosClient, HexString } from "aptos";
 import bigInt from "big-integer";
-import Decimal from "decimal.js";
 
 export type TypeParamDeclType = {
   name: string;
@@ -49,8 +48,8 @@ export function parseStructProto(data: any, typeTag: TypeTag, repo: AptosParserR
     if(!(fieldName in data)) {
       throw new Error(`${struct.name} expects a field named ${fieldName} but it does not exist`);
     }
-    const fieldTypeTag = 
-        fieldDecl.typeTag instanceof TypeParamIdx? typeTag.typeParams[fieldDecl.typeTag.index] : fieldDecl.typeTag;
+    // substitute TypeParamIdx with the actual typeParam
+    const fieldTypeTag = substituteTypeParams(fieldDecl.typeTag, typeTag.typeParams);
     if(!fieldTypeTag) {
       console.log(JSON.stringify(typeTag.typeParams));
       console.log(JSON.stringify(fieldDecl.typeTag));
