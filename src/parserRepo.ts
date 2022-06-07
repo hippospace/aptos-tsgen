@@ -13,7 +13,7 @@ export type FieldDeclType = {
 export interface StructInfoType {
   moduleAddress: HexString;
   moduleName: string;
-  name: string;
+  structName: string;
   typeParameters: TypeParamDeclType[];
   fields: FieldDeclType[];
   new(proto: any, typeTag: TypeTag): any;
@@ -21,16 +21,16 @@ export interface StructInfoType {
 
 export function parseStructProto(data: any, typeTag: TypeTag, repo: AptosParserRepo, struct: StructInfoType): any {
   if(!(typeTag instanceof StructTag)) {
-    throw new Error(`${struct.name} expects a StructTag as typeTag but received: ${typeTag}`);
+    throw new Error(`${struct.structName} expects a StructTag as typeTag but received: ${typeTag}`);
   }
   if(typeTag.address.hex() !== struct.moduleAddress.hex()) {
-    throw new Error(`${struct.name} expects a moduleAddress of ${struct.moduleAddress} but received: ${typeTag.address}.`);
+    throw new Error(`${struct.structName} expects a moduleAddress of ${struct.moduleAddress} but received: ${typeTag.address}.`);
   }
   if(typeTag.module !== struct.moduleName) {
-    throw new Error(`${struct.name} expects a moduleName of ${struct.moduleName} but received: ${typeTag.module}`);
+    throw new Error(`${struct.structName} expects a moduleName of ${struct.moduleName} but received: ${typeTag.module}`);
   }
-  if(typeTag.name !== struct.name) {
-    throw new Error(`${struct.name} expects a struct name of "${struct.name}" but received: ${typeTag.name}`);
+  if(typeTag.name !== struct.structName) {
+    throw new Error(`${struct.structName} expects a struct name of "${struct.structName}" but received: ${typeTag.name}`);
   }
   if(typeof data !== "object") {
     // could be 0x1::ASCII::String
@@ -38,7 +38,7 @@ export function parseStructProto(data: any, typeTag: TypeTag, repo: AptosParserR
       // return the raw string
       return data;
     }
-    throw new Error(`${struct.name} expects data to be an object, but instead got: ${typeof data}`);
+    throw new Error(`${struct.structName} expects data to be an object, but instead got: ${typeof data}`);
   }
 
   // check all keys exist
@@ -46,7 +46,7 @@ export function parseStructProto(data: any, typeTag: TypeTag, repo: AptosParserR
   for(const fieldDecl of struct.fields) {
     const fieldName = fieldDecl.name;
     if(!(fieldName in data)) {
-      throw new Error(`${struct.name} expects a field named ${fieldName} but it does not exist`);
+      throw new Error(`${struct.structName} expects a field named ${fieldName} but it does not exist`);
     }
     // substitute TypeParamIdx with the actual typeParam
     const fieldTypeTag = substituteTypeParams(fieldDecl.typeTag, typeTag.typeParams);
@@ -221,7 +221,7 @@ export class AptosParserRepo {
     if(structTsType.typeParameters.length !== typeParams.length) {
       throw new Error(`Expected ${structTsType.typeParameters.length} type parameters but got ${typeParams.length}`);
     }
-    const typeTag = new StructTag(structTsType.moduleAddress, structTsType.moduleName, structTsType.name, typeParams);
+    const typeTag = new StructTag(structTsType.moduleAddress, structTsType.moduleName, structTsType.structName, typeParams);
     const resource = await client.getAccountResource(address, getTypeTagFullname(typeTag));
     const proto = parseStructProto(resource.data, typeTag, this, structTsType);
     return new structTsType(proto, typeTag);
