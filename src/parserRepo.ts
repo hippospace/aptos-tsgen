@@ -17,6 +17,7 @@ export interface StructInfoType {
   typeParameters: TypeParamDeclType[];
   fields: FieldDeclType[];
   new(proto: any, typeTag: TypeTag): any;
+  load?(repo: AptosParserRepo, client: AptosClient, address: HexString, typeParams: TypeTag[]): Promise<any>;
 }
 
 export function parseStructProto(data: any, typeTag: TypeTag, repo: AptosParserRepo, struct: StructInfoType): any {
